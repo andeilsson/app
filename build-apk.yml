@@ -1,0 +1,93 @@
+name: 🛰️ Compilar APK Rastreador Polonorte
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: 📦 Baixar código
+      uses: actions/checkout@v4
+
+    - name: ☕ Configurar Java 17
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '17'
+
+    - name: 📗 Configurar Node.js 20
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+
+    - name: 📥 Instalar dependências
+      run: npm install
+
+    - name: 🔧 Expo Prebuild (gerar projeto Android nativo)
+      run: npx expo prebuild --platform android --clean --no-install
+      env:
+        EXPO_NO_TELEMETRY: 1
+
+    - name: 🔑 Permissões background location no AndroidManifest
+      run: |
+        MANIFEST=android/app/src/main/AndroidManifest.xml
+        # Garante permissão de background location
+        if ! grep -q "ACCESS_BACKGROUND_LOCATION" $MANIFEST; then
+          sed -i 's|<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>|<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>\n    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION"/>|' $MANIFEST
+        fi
+        # Foreground Service
+        if ! grep -q "FOREGROUND_SERVICE_LOCATION" $MANIFEST; then
+          sed -i 's|<uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>|<uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>\n    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION"/>|' $MANIFEST
+        fi
+        echo "✅ Permissões verificadas:"
+        grep -i "location\|foreground" $MANIFEST || true
+
+    - name: 🏗️ Compilar APK debug
+      run: |
+        cd android
+        chmod +x gradlew
+        ./gradlew assembleDebug --no-daemon --stacktrace
+      env:
+        JAVA_OPTS: '-Xmx4096m -XX:MaxMetaspaceSize=512m'
+        GRADLE_OPTS: '-Dorg.gradle.daemon=false -Dorg.gradle.jvmargs=-Xmx4096m'
+
+    - name: 🏷️ Definir versão
+      id: ver
+      run: echo "tag=v$(date +'%Y%m%d-%H%M')" >> $GITHUB_OUTPUT
+
+    - name: 🚀 Publicar Release
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: ${{ steps.ver.outputs.tag }}
+        name: "Rastreador Polonorte ${{ steps.ver.outputs.tag }}"
+        body: |
+          ## 📱 Rastreador Polonorte GPS
+
+          **Funcionalidades:**
+          - ✅ Rastreamento GPS em tempo real
+          - ✅ Funciona com tela bloqueada (Foreground Service)
+          - ✅ Continua após fechar o app
+          - ✅ Escaneia QR Code para configurar
+          - ✅ Envia: localização, velocidade, precisão, bateria
+          - ✅ Intervalo configurável: 5s, 10s, 15s, 30s, 1min
+
+          **Instalar:**
+          1. Baixe o `app-debug.apk` abaixo
+          2. Envie para o celular
+          3. Instale (ative "Fontes desconhecidas" se necessário)
+          4. Abra, escaneie o QR ou cole o token e toque em **Iniciar**
+
+          **⚠️ Importante após instalar:**
+          Vá em Configurações → Aplicativos → Rastreador Polonorte → Bateria → **Sem restrições**
+          Isso garante que o Android não mate o app em segundo plano.
+
+          ⏱️ Compilado em: ${{ steps.ver.outputs.tag }}
+        files: android/app/build/outputs/apk/debug/app-debug.apk
+        draft: false
