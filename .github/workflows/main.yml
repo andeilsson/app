@@ -1,7 +1,7 @@
 name: 🛰️ Build APK - Rastreador Polonorte
 
 on:
-  workflow_dispatch:  # Permite rodar manualmente
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -25,12 +25,16 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
+          # Removido o cache temporariamente para evitar erro
+          # cache: 'npm'
 
       - name: 📦 Instalar dependências
-        run: npm install
+        run: |
+          npm install
+          # Gera o package-lock.json na primeira execução
+          npm install --package-lock-only
 
-      - name: 🔧 Expo Prebuild (Gerar projeto nativo)
+      - name: 🔧 Expo Prebuild
         run: npx expo prebuild --platform android --clean
         env:
           EXPO_NO_TELEMETRY: 1
@@ -38,8 +42,10 @@ jobs:
       - name: 🔑 Ajustar permissões Android
         run: |
           MANIFEST="android/app/src/main/AndroidManifest.xml"
-          sed -i '/<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/a \    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION"/>' $MANIFEST
-          sed -i '/<uses-permission android:name="android.permission.FOREGROUND_SERVICE"/a \    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION"/>' $MANIFEST || true
+          if [ -f "$MANIFEST" ]; then
+            sed -i '/ACCESS_FINE_LOCATION/a \    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION"/>' $MANIFEST
+            sed -i '/FOREGROUND_SERVICE/a \    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION"/>' $MANIFEST || true
+          fi
           echo "✅ Permissões ajustadas"
 
       - name: 🏗️ Compilar APK
@@ -61,15 +67,8 @@ jobs:
           tag_name: ${{ steps.version.outputs.tag }}
           name: "Rastreador Polonorte ${{ steps.version.outputs.tag }}"
           body: |
-            **Versão:** ${{ steps.version.outputs.tag }}
+            **Compilado em:** ${{ steps.version.outputs.tag }}
             
-            ✅ Compilado automaticamente pelo GitHub Actions
-            ✅ Funciona com tela bloqueada
-            ✅ Compatível com sua plataforma Polonorte
-            
-            **Como instalar:**
-            1. Baixe o arquivo `app-debug.apk`
-            2. Ative "Fontes desconhecidas" no celular
-            3. Instale e teste
+            ✅ App atualizado e compatível com sua plataforma
+            ✅ Rastreamento em segundo plano
           files: android/app/build/outputs/apk/debug/app-debug.apk
-          draft: false
